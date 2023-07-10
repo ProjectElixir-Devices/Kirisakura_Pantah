@@ -351,6 +351,17 @@ void unpin_user_pages(struct page **pages, unsigned long npages)
 }
 EXPORT_SYMBOL(unpin_user_pages);
 
+/*
+ * Set the MMF_HAS_PINNED if not set yet; after set it'll be there for the mm's
+ * lifecycle.  Avoid setting the bit unless necessary, or it might cause write
+ * cache bouncing on large SMP machines for concurrent pinned gups.
+ */
+static inline void mm_set_has_pinned_flag(unsigned long *mm_flags)
+{
+	if (!test_bit(MMF_HAS_PINNED, mm_flags))
+		set_bit(MMF_HAS_PINNED, mm_flags);
+}
+
 #ifdef CONFIG_MMU
 static struct page *no_page_table(struct vm_area_struct *vma,
 		unsigned int flags)
@@ -1288,7 +1299,7 @@ static __always_inline long __get_user_pages_locked(struct mm_struct *mm,
 	}
 
 	if (flags & FOLL_PIN)
-		atomic_set(&mm->has_pinned, 1);
+		mm_set_has_pinned_flag(&mm->flags);
 
 	/*
 	 * FOLL_PIN and FOLL_GET are mutually exclusive. Traditional behavior
@@ -2702,6 +2713,7 @@ static int internal_get_user_pages_fast(unsigned long start,
 	unsigned long len, end;
 	unsigned long nr_pinned;
 	int ret;
+	unsigned long orig_gup_flags = gup_flags;
 
 	if (WARN_ON_ONCE(gup_flags & ~(FOLL_WRITE | FOLL_LONGTERM |
 				       FOLL_FORCE | FOLL_PIN | FOLL_GET |
@@ -2709,7 +2721,7 @@ static int internal_get_user_pages_fast(unsigned long start,
 		return -EINVAL;
 
 	if (gup_flags & FOLL_PIN)
-		atomic_set(&current->mm->has_pinned, 1);
+		mm_set_has_pinned_flag(&current->mm->flags);
 
 	if (!(gup_flags & FOLL_FAST_ONLY))
 		might_lock_read(&current->mm->mmap_lock);
@@ -2729,8 +2741,14 @@ static int internal_get_user_pages_fast(unsigned long start,
 	start += nr_pinned << PAGE_SHIFT;
 	pages += nr_pinned;
 	trace_android_vh_internal_get_user_pages_fast(&gup_flags, pages);
+retry:
 	ret = __gup_longterm_unlocked(start, nr_pages - nr_pinned, gup_flags,
 				      pages);
+	if (ret < 0 && orig_gup_flags != gup_flags) {
+		gup_flags = orig_gup_flags;
+		goto retry;
+	}
+
 	if (ret < 0) {
 		/*
 		 * The caller has to unpin the pages we already pinned so

@@ -1625,7 +1625,7 @@ static void free_pcppages_bulk(struct zone *zone, int count,
 		do {
 			int mt;
 
-			page = list_last_entry(list, struct page, lru);
+			page = list_last_entry(list, struct page, pcp_list);
 			mt = get_pcppage_migratetype(page);
 
 			/* must delete to avoid corrupting pcp list */
@@ -3420,7 +3420,7 @@ void mark_free_pages(struct zone *zone)
 
 	for_each_migratetype_order(order, t) {
 		list_for_each_entry(page,
-				&zone->free_area[order].free_list[t], lru) {
+				&zone->free_area[order].free_list[t], buddy_list) {
 			unsigned long i;
 
 			pfn = page_to_pfn(page);
@@ -3765,6 +3765,44 @@ static inline void zone_statistics(struct zone *preferred_zone, struct zone *z,
 #endif
 }
 
+#ifdef CONFIG_CMA
+/*
+ * GFP_MOVABLE allocation could drain UNMOVABLE & RECLAIMABLE page blocks via
+ * the help of CMA which makes GFP_KERNEL failed. Checking if zone_watermark_ok
+ * again without ALLOC_CMA to see if to use CMA first.
+ */
+static bool use_cma_first(struct zone *zone, unsigned int order, unsigned int alloc_flags)
+{
+	unsigned long watermark;
+	bool cma_first = false;
+
+	watermark = wmark_pages(zone, alloc_flags & ALLOC_WMARK_MASK);
+	/* check if GFP_MOVABLE pass previous zone_watermark_ok via the help of CMA */
+	if (zone_watermark_ok(zone, order, watermark, 0, alloc_flags & (~ALLOC_CMA))) {
+		/*
+		 * Balance movable allocations between regular and CMA areas by
+		 * allocating from CMA when over half of the zone's free memory
+		 * is in the CMA area.
+		 */
+		cma_first = (zone_page_state(zone, NR_FREE_CMA_PAGES) >
+				zone_page_state(zone, NR_FREE_PAGES) / 2);
+	} else {
+		/*
+		 * watermark failed means UNMOVABLE & RECLAIMBLE is not enough
+		 * now, we should use cma first to keep them stay around the
+		 * corresponding watermark
+		 */
+		cma_first = true;
+	}
+	return cma_first;
+}
+#else
+static bool use_cma_first(struct zone *zone, unsigned int order, unsigned int alloc_flags)
+{
+	return false;
+}
+#endif
+
 static __always_inline
 struct page *rmqueue_buddy(struct zone *preferred_zone, struct zone *zone,
 			   unsigned int order, unsigned int alloc_flags,
@@ -3790,9 +3828,23 @@ struct page *rmqueue_buddy(struct zone *preferred_zone, struct zone *zone,
 				migratetype < MIGRATE_PCPTYPES);
 		}
 		if (!page) {
-			if (alloc_flags & ALLOC_CMA && migratetype == MIGRATE_MOVABLE)
-				page = __rmqueue_cma(zone, order, migratetype,
-						     alloc_flags);
+			/*
+			 * Balance movable allocations between regular and CMA areas by
+			 * allocating from CMA base on judging zone_watermark_ok again
+			 * to see if the latest check got pass via the help of CMA
+			 */
+			 if (alloc_flags & ALLOC_CMA) {
+				bool use_cma_first_check = false;
+				bool try_cma;
+
+				trace_android_vh_use_cma_first_check(&use_cma_first_check);
+				try_cma = use_cma_first_check ?
+					use_cma_first(zone, order, alloc_flags) :
+					migratetype == MIGRATE_MOVABLE;
+				if (try_cma)
+					page = __rmqueue_cma(zone, order, migratetype,
+						alloc_flags);
+			 }
 			if (!page)
 				page = __rmqueue(zone, order, migratetype,
 						 alloc_flags);
@@ -3846,7 +3898,7 @@ struct page *__rmqueue_pcplist(struct zone *zone, unsigned int order,
 				return NULL;
 		}
 
-		page = list_first_entry(list, struct page, lru);
+		page = list_first_entry(list, struct page, pcp_list);
 		list_del(&page->pcp_list);
 		pcp->count -= 1 << order;
 	} while (check_new_pcp(page, order));
@@ -3907,7 +3959,8 @@ struct page *rmqueue(struct zone *preferred_zone,
 	if (likely(pcp_allowed_order(order))) {
 		page = rmqueue_pcplist(preferred_zone, zone, order,
 				migratetype, alloc_flags);
-		goto out;
+		if (likely(page))
+			goto out;
 	}
 
 	page = rmqueue_buddy(preferred_zone, zone, order, alloc_flags,
@@ -3958,6 +4011,9 @@ static bool __should_fail_alloc_page(gfp_t gfp_mask, unsigned int order)
 	if (fail_page_alloc.ignore_gfp_reclaim &&
 			(gfp_mask & __GFP_DIRECT_RECLAIM))
 		return false;
+
+	if (gfp_mask & __GFP_NOWARN)
+		fail_page_alloc.attr.no_warn = true;
 
 	return should_fail(&fail_page_alloc.attr, 1 << order);
 }
@@ -4329,7 +4385,7 @@ retry:
 			 * Watermark failed for this zone, but see if we can
 			 * grow this zone if it contains deferred pages.
 			 */
-			if (static_branch_unlikely(&deferred_pages)) {
+			if (deferred_pages_enabled()) {
 				if (_deferred_grow_zone(zone, order))
 					goto try_this_zone;
 			}
@@ -4339,7 +4395,7 @@ retry:
 			if (alloc_flags & ALLOC_NO_WATERMARKS)
 				goto try_this_zone;
 
-			if (node_reclaim_mode == 0 ||
+			if (!node_reclaim_enabled() ||
 			    !zone_allows_reclaim(ac->preferred_zoneref->zone, zone))
 				continue;
 
@@ -4378,7 +4434,7 @@ try_this_zone:
 		} else {
 #ifdef CONFIG_DEFERRED_STRUCT_PAGE_INIT
 			/* Try again if zone has deferred pages */
-			if (static_branch_unlikely(&deferred_pages)) {
+			if (deferred_pages_enabled()) {
 				if (_deferred_grow_zone(zone, order))
 					goto try_this_zone;
 			}
@@ -4532,7 +4588,8 @@ __alloc_pages_may_oom(gfp_t gfp_mask, unsigned int order,
 	 */
 
 	/* Exhausted what can be done so it's blame time */
-	if (out_of_memory(&oc) || WARN_ON_ONCE(gfp_mask & __GFP_NOFAIL)) {
+	if (out_of_memory(&oc) ||
+	    WARN_ON_ONCE_GFP(gfp_mask & __GFP_NOFAIL, gfp_mask)) {
 		*did_some_progress = 1;
 
 		/*
@@ -4577,6 +4634,8 @@ __alloc_pages_direct_compact(gfp_t gfp_mask, unsigned int order,
 	memalloc_noreclaim_restore(noreclaim_flag);
 	psi_memstall_leave(&pflags);
 
+	if (*compact_result == COMPACT_SKIPPED)
+		return NULL;
 	/*
 	 * At least in one zone compaction wasn't deferred or skipped, so let's
 	 * count a compaction stall
@@ -5127,6 +5186,19 @@ restart:
 	if (!ac->preferred_zoneref->zone)
 		goto nopage;
 
+	/*
+	 * Check for insane configurations where the cpuset doesn't contain
+	 * any suitable zone to satisfy the request - e.g. non-movable
+	 * GFP_HIGHUSER allocations from MOVABLE nodes only.
+	 */
+	if (cpusets_insane_config() && (gfp_mask & __GFP_HARDWALL)) {
+		struct zoneref *z = first_zones_zonelist(ac->zonelist,
+					ac->highest_zoneidx,
+					&cpuset_current_mems_allowed);
+		if (!z->zone)
+			goto nopage;
+	}
+
 	if (alloc_flags & ALLOC_KSWAPD)
 		wake_all_kswapds(order, gfp_mask, ac);
 
@@ -5316,7 +5388,7 @@ nopage:
 		 * All existing users of the __GFP_NOFAIL are blockable, so warn
 		 * of any new users that actually require GFP_NOWAIT
 		 */
-		if (WARN_ON_ONCE(!can_direct_reclaim))
+		if (WARN_ON_ONCE_GFP(!can_direct_reclaim, gfp_mask))
 			goto fail;
 
 		/*
@@ -5324,7 +5396,7 @@ nopage:
 		 * because we cannot reclaim anything and only can loop waiting
 		 * for somebody to do a work for us
 		 */
-		WARN_ON_ONCE(current->flags & PF_MEMALLOC);
+		WARN_ON_ONCE_GFP(current->flags & PF_MEMALLOC, gfp_mask);
 
 		/*
 		 * non failing costly orders are a hard requirement which we
@@ -5332,7 +5404,7 @@ nopage:
 		 * so that we can identify them and convert them to something
 		 * else.
 		 */
-		WARN_ON_ONCE(costly_order);
+		WARN_ON_ONCE_GFP(costly_order, gfp_mask);
 
 		/*
 		 * Help non-failing allocations by giving some access to memory
@@ -5585,10 +5657,8 @@ struct page *__alloc_pages(gfp_t gfp, unsigned int order, int preferred_nid,
 	 * There are several places where we assume that the order value is sane
 	 * so bail out early if the request is out of bound.
 	 */
-	if (unlikely(order >= MAX_ORDER)) {
-		WARN_ON_ONCE(!(gfp & __GFP_NOWARN));
+	if (WARN_ON_ONCE_GFP(order >= MAX_ORDER, gfp))
 		return NULL;
-	}
 
 	gfp &= gfp_allowed_mask;
 	/*
@@ -6590,7 +6660,21 @@ static void __build_all_zonelists(void *data)
 	int nid;
 	int __maybe_unused cpu;
 	pg_data_t *self = data;
+	unsigned long flags;
 
+	/*
+	 * Explicitly disable this CPU's interrupts before taking seqlock
+	 * to prevent any IRQ handler from calling into the page allocator
+	 * (e.g. GFP_ATOMIC) that could hit zonelist_iter_begin and livelock.
+	 */
+	local_irq_save(flags);
+	/*
+	 * Explicitly disable this CPU's synchronous printk() before taking
+	 * seqlock to prevent any printk() from trying to hold port->lock, for
+	 * tty_insert_flip_string_and_push_buffer() on other CPU might be
+	 * calling kmalloc(GFP_ATOMIC | __GFP_NOWARN) with port->lock held.
+	 */
+	printk_deferred_enter();
 	write_seqlock(&zonelist_update_seq);
 
 #ifdef CONFIG_NUMA
@@ -6625,6 +6709,8 @@ static void __build_all_zonelists(void *data)
 	}
 
 	write_sequnlock(&zonelist_update_seq);
+	printk_deferred_exit();
+	local_irq_restore(flags);
 }
 
 static noinline void __init
@@ -9149,7 +9235,7 @@ int __alloc_contig_migrate_range(struct compact_control *cc,
 	if (!skip)
 		lru_cache_enable();
 	if (ret < 0) {
-		if (ret == -EBUSY) {
+		if (!(cc->gfp_mask & __GFP_NOWARN) && ret == -EBUSY) {
 			alloc_contig_dump_pages(&cc->migratepages);
 			list_for_each_entry(page, &cc->migratepages, lru) {
 				/* The page will be freed by putback_movable_pages soon */
@@ -9233,8 +9319,6 @@ int alloc_contig_range(unsigned long start, unsigned long end,
 		info->err |= ACR_ERR_ISOLATE;
 		goto done;
 	}
-
-	drain_all_pages(cc.zone);
 
 	drain_all_pages(cc.zone);
 

@@ -41,6 +41,7 @@
 #include <trace/hooks/topology.h>
 #include <trace/hooks/mpam.h>
 #include <trace/hooks/gic.h>
+#include <trace/hooks/wqlockup.h>
 #include <trace/hooks/debug.h>
 #include <trace/hooks/sysrqcrash.h>
 #include <trace/hooks/printk.h>
@@ -147,6 +148,7 @@ EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_cpu_idle_exit);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_mpam_set);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_rvh_find_busiest_group);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_gic_resume);
+EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_wq_lockup_pool);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_ipi_stop);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_sysrq_crash);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_dump_throttled_rt_tasks);
@@ -200,7 +202,6 @@ EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_ftrace_dump_buffer);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_allow_domain_state);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_map_util_freq);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_update_next_freq);
-EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_sugov_get_util);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_rvh_report_bug);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_em_cpu_energy);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_cpu_up);
@@ -423,3 +424,4 @@ EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_early_resume_begin);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_alloc_pages_reclaim_bypass);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_alloc_pages_failure_bypass);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_rebuild_root_domains_bypass);
+EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_use_cma_first_check);

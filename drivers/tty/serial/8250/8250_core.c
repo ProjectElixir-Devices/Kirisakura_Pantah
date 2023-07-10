@@ -310,9 +310,10 @@ static void serial8250_backup_timeout(struct timer_list *t)
 		jiffies + uart_poll_timeout(&up->port) + HZ / 5);
 }
 
-static void univ8250_setup_timer(struct uart_8250_port *up)
+static int univ8250_setup_irq(struct uart_8250_port *up)
 {
 	struct uart_port *port = &up->port;
+	int retval = 0;
 
 	/*
 	 * The above check will only give an accurate result the first time
@@ -333,16 +334,10 @@ static void univ8250_setup_timer(struct uart_8250_port *up)
 	 */
 	if (!port->irq)
 		mod_timer(&up->timer, jiffies + uart_poll_timeout(port));
-}
+	else
+		retval = serial_link_irq_chain(up);
 
-static int univ8250_setup_irq(struct uart_8250_port *up)
-{
-	struct uart_port *port = &up->port;
-
-	if (port->irq)
-		return serial_link_irq_chain(up);
-
-	return 0;
+	return retval;
 }
 
 static void univ8250_release_irq(struct uart_8250_port *up)
@@ -398,7 +393,6 @@ static struct uart_ops univ8250_port_ops;
 static const struct uart_8250_ops univ8250_driver_ops = {
 	.setup_irq	= univ8250_setup_irq,
 	.release_irq	= univ8250_release_irq,
-	.setup_timer	= univ8250_setup_timer,
 };
 
 static struct uart_8250_port serial8250_ports[UART_NR];
@@ -1165,6 +1159,7 @@ void serial8250_unregister_port(int line)
 		uart->port.type = PORT_UNKNOWN;
 		uart->port.dev = &serial8250_isa_devs->dev;
 		uart->capabilities = 0;
+		serial8250_init_port(uart);
 		serial8250_apply_quirks(uart);
 		uart_add_one_port(&serial8250_reg, &uart->port);
 	} else {
