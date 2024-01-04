@@ -298,7 +298,6 @@ config FRAME_WARN
 	int "Warn for stack frames larger than"
 	range 0 8192
 	default 2048 if GCC_PLUGIN_LATENT_ENTROPY
-	default 1280 if KASAN && !64BIT
 	default 2048 if PARISC
 	default 1536 if (!64BIT && XTENSA)
 	default 1280 if KASAN && !64BIT
@@ -605,6 +604,15 @@ config DEBUG_OBJECTS_ENABLE_DEFAULT
 	depends on DEBUG_OBJECTS
 	help
 	  Debug objects boot parameter default value
+
+config SHRINKER_DEBUG
+	default y
+	bool "Enable shrinker debugging support"
+	depends on DEBUG_FS
+	help
+	  Say Y to enable the shrinker debugfs interface which provides
+	  visibility into the kernel memory shrinkers subsystem.
+	  Disable it to avoid an extra memory footprint.
 
 config DEBUG_SLAB
 	bool "Debug slab memory allocations"

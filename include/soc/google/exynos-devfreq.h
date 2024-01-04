@@ -139,6 +139,7 @@ struct exynos_devfreq_data {
 	struct clk				*clk;
 
 	bool					devfreq_disabled;
+	u32		cpu;
 
 	u32		devfreq_type;
 
@@ -204,7 +205,6 @@ struct exynos_devfreq_data {
 	struct um_exynos			um_data;
 	u64					last_monitor_period;
 	u64					last_monitor_time;
-	u32					last_um_usage_rate;
 
 	struct exynos_pm_domain *pm_domain;
 	unsigned long previous_freq;

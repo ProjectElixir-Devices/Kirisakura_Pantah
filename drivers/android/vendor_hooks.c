@@ -98,6 +98,7 @@
 #include <trace/hooks/gup.h>
 #include <trace/hooks/pci.h>
 #include <trace/hooks/suspend.h>
+#include <trace/hooks/dmabuf.h>
 
 /*
  * Export tracepoints that act as a bare tracehook (ie: have no trace event
@@ -254,7 +255,6 @@ EXPORT_TRACEPOINT_SYMBOL_GPL(android_rvh_uclamp_rq_util_with);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_rvh_cpufreq_transition);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_syscall_prctl_finished);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_create_worker);
-EXPORT_TRACEPOINT_SYMBOL_GPL(android_rvh_check_preempt_tick);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_rvh_check_preempt_wakeup_ignore);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_rvh_replace_next_task_fair);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_rvh_do_sched_yield);
@@ -299,7 +299,6 @@ EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_skip_lru_disable);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_cma_alloc_adjust);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_show_mem);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_print_slabinfo_header);
-EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_do_shrink_slab);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_cache_show);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_typec_tcpci_override_toggling);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_rvh_typec_tcpci_chk_contaminant);
@@ -324,7 +323,6 @@ EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_logbuf);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_logbuf_pr_cont);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_tune_scan_type);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_tune_swappiness);
-EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_shrink_slab_bypass);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_psi_event);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_psi_group);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_rvh_set_cpus_allowed_comm);
@@ -407,6 +405,7 @@ EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh___get_user_pages_remote);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_get_user_pages);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_internal_get_user_pages_fast);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_pin_user_pages);
+EXPORT_TRACEPOINT_SYMBOL_GPL(android_vh_dmabuf_heap_flags_validation);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_rvh_attach_entity_load_avg);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_rvh_detach_entity_load_avg);
 EXPORT_TRACEPOINT_SYMBOL_GPL(android_rvh_update_load_avg);

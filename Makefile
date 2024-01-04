@@ -1,9 +1,13 @@
 # SPDX-License-Identifier: GPL-2.0
 VERSION = 5
 PATCHLEVEL = 10
-SUBLEVEL = 195
+SUBLEVEL = 197
 EXTRAVERSION =
 NAME = Dare mighty things
+
+ifeq ($(MAKECMDGOALS),)
+MAKECMDGOALS := Image.lz4 google/dtbo.img dtbs
+endif
 
 # *DOCUMENTATION*
 # To see a list of typical targets execute "make help"
@@ -126,6 +130,8 @@ export quiet Q KBUILD_VERBOSE
 #
 # The O= assignment takes precedence over the KBUILD_OUTPUT environment
 # variable.
+
+KBUILD_OUTPUT := out
 
 # Do we want to change the working directory?
 ifeq ("$(origin O)", "command line")
@@ -388,7 +394,7 @@ include $(srctree)/scripts/subarch.include
 # Alternatively CROSS_COMPILE can be set in the environment.
 # Default value for CROSS_COMPILE is not to prefix executables
 # Note: Some architectures assign CROSS_COMPILE in their arch/*/Makefile
-ARCH		?= $(SUBARCH)
+ARCH		:= arm64
 
 # Architecture as present in compile.h
 UTS_MACHINE 	:= $(ARCH)
@@ -660,12 +666,18 @@ ifdef need-config
 include include/config/auto.conf
 endif
 
+ifdef CONFIG_INTEGRATE_MODULES
+KBUILD_CFLAGS_MODULE += -include $(srctree)/include/linux/integrated_module.h
+endif
+
 ifeq ($(KBUILD_EXTMOD),)
 # Objects we will link into vmlinux / subdirs we need to visit
 core-y		:= init/ usr/
 drivers-y	:= drivers/ sound/
 drivers-$(CONFIG_SAMPLES) += samples/
 drivers-y	+= net/ virt/
+drivers-y	+= google-devices/
+drivers-y	+= google-modules/
 libs-y		:= lib/
 endif # KBUILD_EXTMOD
 
@@ -1448,7 +1460,7 @@ ifneq ($(dtstree),)
 $(filter %/dtbo.img, $(MAKECMDGOALS)): %/dtbo.img: | $(filter %.dtbo %.dtb dtbs,$(MAKECMDGOALS))
 $(filter %.dtbo, $(MAKECMDGOALS)): %.dtbo: | $(filter %.dtb dtbs,$(MAKECMDGOALS))
 
-%.dtb %/dtbo.img %.dtbo: include/config/kernel.release scripts_dtc
+%.dtb %/dtbo.img %.dtbo: include/config/kernel.release scripts_dtc scripts_mkdtimg
 	$(Q)$(MAKE) $(build)=$(dtstree)/$(@D) $(dtstree)/$@
 
 PHONY += dtbs dtbs_install dtbs_check
@@ -1471,9 +1483,12 @@ endif
 
 endif
 
-PHONY += scripts_dtc
+PHONY += scripts_dtc scripts_mkdtimg
 scripts_dtc: scripts_basic
-	$(Q)$(MAKE) $(build)=scripts/dtc
+	$(Q)$(MAKE) $(build)=scripts/dtc-aosp
+
+scripts_mkdtimg: scripts_dtc
+	$(Q)$(MAKE) $(build)=scripts/libufdt
 
 ifneq ($(filter dt_binding_check, $(MAKECMDGOALS)),)
 export CHECK_DT_BINDING=y
